@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Steady Swipe">
+<meta name="theme-color" content="#3c6e8f">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<title>Steady Swipe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+/* Layout: one-screen phone app. Top bar, a single thought card in the middle, swipe targets on either side, stats below. */
+:root{
+  --bg:#eef2f4; --surface:#ffffff; --fg:#1d2a33; --muted:#5d6e79; --line:#d6dee3;
+  --keep:#2f7d6b; --keep-soft:#dcefe9; --drop:#8a5a9e; --drop-soft:#efe4f4; --accent:#3c6e8f;
+  --display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body:"Atkinson Hyperlegible", system-ui, -apple-system, sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#111a20; --surface:#1a262e; --fg:#e4ecf0; --muted:#94a6b1; --line:#2c3b45;
+  --keep:#5fc2a9; --keep-soft:#183a33; --drop:#c49ad6; --drop-soft:#33263b; --accent:#7fb1d1; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#111a20; --surface:#1a262e; --fg:#e4ecf0; --muted:#94a6b1; --line:#2c3b45;
+  --keep:#5fc2a9; --keep-soft:#183a33; --drop:#c49ad6; --drop-soft:#33263b; --accent:#7fb1d1; color-scheme:dark}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:16px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));}
+.app{max-width:460px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;gap:16px;padding-block:16px}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px}
+h1{font-family:var(--display);font-weight:700;font-size:1.4rem;margin:0;letter-spacing:-.01em}
+h2{font-family:var(--display);font-weight:600;font-size:1.1rem;margin:0}
+.tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px}
+.tabs button{border:0;background:none;color:var(--muted);font:inherit;font-size:.85rem;padding:6px 12px;border-radius:999px;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--accent);color:var(--surface)}
+button:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.packs{display:flex;gap:8px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:var(--surface);color:var(--fg);font:inherit;font-size:.85rem;padding:6px 12px;border-radius:999px;cursor:pointer}
+.chip[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);font-weight:700}
+.stage{position:relative;flex:1;min-height:340px;display:flex;align-items:center;justify-content:center}
+.hint{position:absolute;top:50%;transform:translateY(-50%);font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);writing-mode:vertical-rl}
+.hint.l{left:-4px;transform:translateY(-50%) rotate(180deg);color:var(--drop)} .hint.r{right:-4px;color:var(--keep)}
+.card{width:calc(100% - 40px);min-height:240px;background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:28px 24px;
+  display:flex;flex-direction:column;justify-content:center;gap:12px;touch-action:none;user-select:none;cursor:grab;
+  box-shadow:0 10px 30px -18px rgba(20,40,55,.45);transition:transform .25s ease,background .2s}
+.card.dragging{transition:none;cursor:grabbing}
+.card .theme{font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.card .text{font-family:var(--display);font-weight:500;font-size:1.45rem;line-height:1.3;text-wrap:balance;margin:0}
+.card.keep{background:var(--keep-soft)} .card.drop{background:var(--drop-soft)}
+.feedback{min-height:72px;border-radius:14px;padding:12px 14px;font-size:.95rem;background:var(--surface);border:1px solid var(--line)}
+.feedback b{display:block;font-family:var(--display)}
+.feedback.ok b{color:var(--keep)} .feedback.no b{color:var(--drop)}
+.buttons{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.big{font:inherit;font-weight:700;border-radius:14px;padding:14px;border:0;cursor:pointer;color:var(--surface)}
+.big.drop{background:var(--drop)} .big.keep{background:var(--keep)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px}
+.stat strong{display:block;font-family:var(--display);font-size:1.3rem;font-variant-numeric:tabular-nums}
+.stat span{font-size:.75rem;color:var(--muted)}
+.panel{display:flex;flex-direction:column;gap:12px}
+textarea,select{font:inherit;width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:12px;padding:10px;background:var(--surface);color:var(--fg)}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.list{display:flex;flex-direction:column;gap:6px;padding:0;margin:0;list-style:none}
+.list li{display:flex;gap:8px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px}
+.list li p{flex:1;margin:0;min-width:0}
+.tag{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.tag.k{background:var(--keep-soft);color:var(--keep)} .tag.d{background:var(--drop-soft);color:var(--drop)}
+.x{border:0;background:none;color:var(--muted);cursor:pointer;font:inherit}
+.note{font-size:.85rem;color:var(--muted);margin:0}
+.done{text-align:center;display:flex;flex-direction:column;gap:8px;align-items:center}
+@media (prefers-reduced-motion:reduce){.card{transition:none}}
+*{box-sizing:border-box} body{margin:0} :root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)} [hidden]{display:none!important}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header>
+    <h1>Steady Swipe</h1>
+    <div class="tabs" role="tablist">
+      <button id="tab-play" role="tab" aria-selected="true">Practice</button>
+      <button id="tab-mine" role="tab" aria-selected="false">My thoughts</button>
+      <button id="tab-about" role="tab" aria-selected="false">How</button>
+    </div>
+  </header>
+
+  <section id="play" class="panel">
+    <div class="packs" id="packs"></div>
+    <div class="stage">
+      <span class="hint l">← let it go</span>
+      <div class="card" id="card" tabindex="0" aria-live="polite"></div>
+      <span class="hint r">keep it →</span>
+    </div>
+    <div class="feedback" id="feedback"><b>Swipe the card</b>Right to keep a helpful thought. Left to let go of an OCD thought.</div>
+    <div class="buttons">
+      <button class="big drop" id="btn-drop">Let it go</button>
+      <button class="big keep" id="btn-keep">Keep it</button>
+    </div>
+    <div class="stats">
+      <div class="stat"><strong id="s-streak">0</strong><span>day streak</span></div>
+      <div class="stat"><strong id="s-today">0</strong><span>swipes today</span></div>
+      <div class="stat"><strong id="s-acc">–</strong><span>accuracy</span></div>
+    </div>
+  </section>
+
+  <section id="mine" class="panel" hidden>
+    <h2>Add your own thoughts</h2>
+    <p class="note">Write the exact thoughts that show up for you, plus helpful replies. They join a "Mine" pack. Everything stays on this phone.</p>
+    <textarea id="new-text" rows="3" placeholder="e.g. I need to check the stove one more time"></textarea>
+    <div class="row">
+      <select id="new-kind" aria-label="Thought type" style="flex:1">
+        <option value="drop">OCD thought (let it go)</option>
+        <option value="keep">Helpful thought (keep it)</option>
+      </select>
+      <button class="big keep" id="btn-add" style="flex:1">Add</button>
+    </div>
+    <ul class="list" id="mine-list"></ul>
+  </section>
+
+  <section id="about" class="panel" hidden>
+    <h2>How it works</h2>
+    <p>OCD thoughts often demand certainty, more checking, or reassurance. Helpful thoughts accept uncertainty and let the urge pass on its own.</p>
+    <p>Each swipe is a small rep of picking the helpful response. A few minutes a day builds the habit. This app does not tell you your fears are false. It practices living with not knowing.</p>
+    <p class="note">This is a practice tool, not treatment. It works best alongside a therapist trained in ERP (Exposure and Response Prevention).</p>
+    <button class="chip" id="btn-reset">Reset my stats</button>
+    <p class="note" id="reset-msg"></p>
+  </section>
+</div>
+
+<script>
+const PACKS = {
+  "Uncertainty": [
+    ["I can live with not knowing for sure.","keep"],
+    ["I need to be 100% certain before I can relax.","drop"],
+    ["Maybe it happened, maybe it didn't. I'm moving on.","keep"],
+    ["If I think about it long enough I'll figure it out.","drop"],
+    ["Feeling unsure is uncomfortable, not dangerous.","keep"],
+    ["I should ask someone to tell me it's fine.","drop"],
+    ["I don't have to solve this thought.","keep"],
+    ["This doubt means something is wrong.","drop"]
+  ],
+  "Checking": [
+    ["I checked once. That's enough, even if it doesn't feel like enough.","keep"],
+    ["One more check and then I'll feel better.","drop"],
+    ["I'll leave it and let the anxiety ride.","keep"],
+    ["If I don't check and something happens, it's my fault.","drop"],
+    ["The urge to check will fade if I don't feed it.","keep"],
+    ["I need to take a photo of the lock to be sure.","drop"],
+    ["I'm choosing to trust my memory, even imperfectly.","keep"],
+    ["It has to feel 'just right' before I stop.","drop"]
+  ],
+  "Contamination": [
+    ["I can touch this and let the dirty feeling stay a while.","keep"],
+    ["I have to wash again to be safe.","drop"],
+    ["Normal amounts of germs are part of normal life.","keep"],
+    ["If I feel contaminated, I must be contaminated.","drop"],
+    ["I'll wait before washing and see what happens to the feeling.","keep"],
+    ["Everything that touched it needs cleaning too.","drop"],
+    ["Maybe I'll get sick, maybe I won't. I'll live my day.","keep"],
+    ["I can't relax until I've showered.","drop"]
+  ],
+  "Intrusive thoughts": [
+    ["A thought is just a thought. It isn't a wish or a plan.","keep"],
+    ["Having this thought says something about who I am.","drop"],
+    ["I can let this thought sit there without arguing with it.","keep"],
+    ["I need to push this thought away right now.","drop"],
+    ["Thoughts can be weird, ugly and still meaningless.","keep"],
+    ["I should review my past to make sure I didn't do something bad.","drop"],
+    ["I'll notice it and keep doing what I was doing.","keep"],
+    ["If I think it, it might come true.","drop"]
+  ]
+};
+const FEEDBACK = {
+  keep: ["Kept.","This one accepts uncertainty and lets the urge pass."],
+  drop: ["Let go.","This one feeds OCD: it chases certainty, checking or reassurance."]
+};
+
+const store = {
+  get(k,d){try{const v=localStorage.getItem("steady-"+k);return v?JSON.parse(v):d}catch(e){return d}},
+  set(k,v){try{localStorage.setItem("steady-"+k,JSON.stringify(v))}catch(e){}}
+};
+let mine = store.get("mine",[]);
+let stats = store.get("stats",{right:0,total:0,days:[],today:{date:"",n:0}});
+let pack = store.get("pack","Uncertainty");
+let deck = [], current = null, busy = false;
+
+const $ = id => document.getElementById(id);
+const today = () => new Date().toISOString().slice(0,10);
+
+function allPacks(){ const p = {...PACKS}; if (mine.length) p["Mine"] = mine.map(m=>[m.text,m.kind]); return p; }
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+
+function renderPacks(){
+  const p = allPacks(); if(!p[pack]) pack="Uncertainty";
+  $("packs").innerHTML = "";
+  Object.keys(p).forEach(name=>{
+    const b=document.createElement("button"); b.className="chip"; b.textContent=name;
+    b.setAttribute("aria-pressed", name===pack);
+    b.onclick=()=>{pack=name;store.set("pack",pack);renderPacks();newDeck()};
+    $("packs").appendChild(b);
+  });
+}
+function newDeck(){ deck = shuffle(allPacks()[pack].slice()); next(); }
+function next(){
+  const card=$("card"); card.className="card"; card.style.transform="";
+  if(!deck.length){
+    current=null;
+    card.innerHTML='<div class="done"><p class="text">Round done.</p><button class="chip" id="again">Go again</button></div>';
+    $("again").onclick=newDeck; return;
+  }
+  current = deck.pop();
+  card.innerHTML = `<span class="theme">${pack}</span><p class="text"></p>`;
+  card.querySelector(".text").textContent = current[0];
+}
+function answer(choice){
+  if(!current||busy) return; busy=true;
+  const correct = choice===current[1], card=$("card");
+  card.classList.add(choice);
+  card.style.transform = `translateX(${choice==="keep"?120:-120}%) rotate(${choice==="keep"?12:-12}deg)`;
+  const f = FEEDBACK[current[1]], fb=$("feedback");
+  fb.className = "feedback " + (correct?"ok":"no");
+  fb.innerHTML = `<b>${correct?"Nice. ":"Look again. "}${f[0]}</b>${f[1]}`;
+  const d=today();
+  if(stats.today.date!==d) stats.today={date:d,n:0};
+  stats.today.n++; stats.total++; if(correct) stats.right++;
+  if(!stats.days.includes(d)) stats.days.push(d);
+  store.set("stats",stats); renderStats();
+  setTimeout(()=>{busy=false;next()}, 380);
+}
+function streak(){
+  const set=new Set(stats.days); let n=0, dt=new Date();
+  if(!set.has(today())) dt.setDate(dt.getDate()-1);
+  while(set.has(dt.toISOString().slice(0,10))){n++;dt.setDate(dt.getDate()-1)}
+  return n;
+}
+function renderStats(){
+  $("s-streak").textContent=streak();
+  $("s-today").textContent=stats.today.date===today()?stats.today.n:0;
+  $("s-acc").textContent=stats.total?Math.round(100*stats.right/stats.total)+"%":"–";
+}
+
+// Dragging
+(()=>{
+  const card=$("card"); let x0=null, dx=0;
+  card.addEventListener("pointerdown",e=>{if(!current||busy)return;x0=e.clientX;dx=0;card.classList.add("dragging");card.setPointerCapture(e.pointerId)});
+  card.addEventListener("pointermove",e=>{if(x0===null)return;dx=e.clientX-x0;
+    card.style.transform=`translateX(${dx}px) rotate(${dx/20}deg)`;
+    card.classList.toggle("keep",dx>40);card.classList.toggle("drop",dx<-40)});
+  const end=()=>{if(x0===null)return;card.classList.remove("dragging");x0=null;
+    if(dx>90)answer("keep");else if(dx<-90)answer("drop");else{card.style.transform="";card.className="card"}};
+  card.addEventListener("pointerup",end);card.addEventListener("pointercancel",end);
+  card.addEventListener("keydown",e=>{if(e.key==="ArrowRight")answer("keep");if(e.key==="ArrowLeft")answer("drop")});
+})();
+$("btn-keep").onclick=()=>answer("keep");
+$("btn-drop").onclick=()=>answer("drop");
+
+// Tabs
+["play","mine","about"].forEach(t=>{
+  $("tab-"+t).onclick=()=>{["play","mine","about"].forEach(o=>{$(o).hidden=o!==t;$("tab-"+o).setAttribute("aria-selected",o===t)})};
+});
+
+// My thoughts
+function renderMine(){
+  const ul=$("mine-list"); ul.innerHTML="";
+  if(!mine.length){ul.innerHTML='<li><p class="note">No thoughts added yet.</p></li>';return}
+  mine.forEach((m,i)=>{
+    const li=document.createElement("li");
+    li.innerHTML=`<span class="tag ${m.kind==="keep"?"k":"d"}">${m.kind==="keep"?"keep":"let go"}</span><p></p><button class="x" aria-label="Remove">✕</button>`;
+    li.querySelector("p").textContent=m.text;
+    li.querySelector("button").onclick=()=>{mine.splice(i,1);store.set("mine",mine);renderMine();renderPacks();if(pack==="Mine"&&!mine.length){pack="Uncertainty";newDeck()}};
+    ul.appendChild(li);
+  });
+}
+$("btn-add").onclick=()=>{
+  const t=$("new-text").value.trim(); if(!t) return;
+  mine.push({text:t,kind:$("new-kind").value}); store.set("mine",mine);
+  $("new-text").value=""; renderMine(); renderPacks();
+};
+let resetArmed=false;
+$("btn-reset").onclick=()=>{
+  if(!resetArmed){resetArmed=true;$("btn-reset").textContent="Tap again to confirm";return}
+  stats={right:0,total:0,days:[],today:{date:"",n:0}};store.set("stats",stats);renderStats();
+  resetArmed=false;$("btn-reset").textContent="Reset my stats";$("reset-msg").textContent="Stats reset.";
+};
+
+renderPacks(); renderMine(); renderStats(); newDeck();
+</script>
+</body>
+</html>
