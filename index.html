@@ -57,7 +57,7 @@ button:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px sol
 .buttons{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .big{font:inherit;font-weight:700;border-radius:14px;padding:14px;border:0;cursor:pointer;color:var(--surface)}
 .big.drop{background:var(--drop)} .big.keep{background:var(--keep)}
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center}
 .stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px}
 .stat strong{display:block;font-family:var(--display);font-size:1.3rem;font-variant-numeric:tabular-nums}
 .stat span{font-size:.75rem;color:var(--muted)}
@@ -102,7 +102,8 @@ textarea,select{font:inherit;width:100%;box-sizing:border-box;border:1px solid v
     </div>
     <div class="stats">
       <div class="stat"><strong id="s-streak">0</strong><span>day streak</span></div>
-      <div class="stat"><strong id="s-today">0</strong><span>swipes today</span></div>
+      <div class="stat"><strong id="s-today">0</strong><span>today</span></div>
+      <div class="stat"><strong id="s-total">0</strong><span>all time</span></div>
       <div class="stat"><strong id="s-acc">–</strong><span>accuracy</span></div>
     </div>
   </section>
@@ -179,17 +180,49 @@ const FEEDBACK = {
   drop: ["Let go.","This one feeds OCD: it chases certainty, checking or reassurance."]
 };
 
-const store = {
-  get(k,d){try{const v=localStorage.getItem("steady-"+k);return v?JSON.parse(v):d}catch(e){return d}},
-  set(k,v){try{localStorage.setItem("steady-"+k,JSON.stringify(v))}catch(e){}}
-};
-let mine = store.get("mine",[]);
-let stats = store.get("stats",{right:0,total:0,days:[],today:{date:"",n:0}});
-let pack = store.get("pack","Uncertainty");
-let deck = [], current = null, busy = false;
+/* User data model, saved on this device under one key.
+   days maps a local date "YYYY-MM-DD" to that day's swipe counts. */
+const USER_KEY = "steady-user";
+const MODEL_VERSION = 1;
+const localDate = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+const today = () => localDate();
 
+function newUser(){
+  return { version: MODEL_VERSION, createdAt: new Date().toISOString(),
+    settings: { pack: "Uncertainty" }, customThoughts: [],
+    totals: { swipes: 0, correct: 0 }, days: {}, bestStreak: 0 };
+}
+function readKey(k){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):null }catch(e){ return null } }
+
+// Moves data saved by the first version (separate keys) into the new record.
+function migrateOld(u){
+  const oldStats=readKey("steady-stats"), oldMine=readKey("steady-mine"), oldPack=readKey("steady-pack");
+  if(oldMine) u.customThoughts=oldMine;
+  if(oldPack) u.settings.pack=oldPack;
+  if(oldStats){
+    u.totals={swipes:oldStats.total||0, correct:oldStats.right||0};
+    (oldStats.days||[]).forEach(d=>{ u.days[d]={swipes:0,correct:0} });
+    if(oldStats.today&&oldStats.today.date&&u.days[oldStats.today.date]) u.days[oldStats.today.date].swipes=oldStats.today.n;
+  }
+  return u;
+}
+function loadUser(){
+  const saved=readKey(USER_KEY);
+  if(saved&&saved.version===MODEL_VERSION) return Object.assign(newUser(), saved);
+  return migrateOld(newUser());
+}
+function saveUser(){ try{ localStorage.setItem(USER_KEY, JSON.stringify(user)) }catch(e){} }
+
+const user = loadUser();
+saveUser();
+// Ask the browser not to clear this data when storage runs low.
+try{ navigator.storage && navigator.storage.persist && navigator.storage.persist() }catch(e){}
+
+let mine = user.customThoughts;
+let pack = user.settings.pack;
+let deck = [], current = null, busy = false;
 const $ = id => document.getElementById(id);
-const today = () => new Date().toISOString().slice(0,10);
 
 function allPacks(){ const p = {...PACKS}; if (mine.length) p["Mine"] = mine.map(m=>[m.text,m.kind]); return p; }
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
@@ -200,7 +233,7 @@ function renderPacks(){
   Object.keys(p).forEach(name=>{
     const b=document.createElement("button"); b.className="chip"; b.textContent=name;
     b.setAttribute("aria-pressed", name===pack);
-    b.onclick=()=>{pack=name;store.set("pack",pack);renderPacks();newDeck()};
+    b.onclick=()=>{pack=name;user.settings.pack=pack;saveUser();renderPacks();newDeck()};
     $("packs").appendChild(b);
   });
 }
@@ -224,23 +257,25 @@ function answer(choice){
   const f = FEEDBACK[current[1]], fb=$("feedback");
   fb.className = "feedback " + (correct?"ok":"no");
   fb.innerHTML = `<b>${correct?"Nice. ":"Look again. "}${f[0]}</b>${f[1]}`;
-  const d=today();
-  if(stats.today.date!==d) stats.today={date:d,n:0};
-  stats.today.n++; stats.total++; if(correct) stats.right++;
-  if(!stats.days.includes(d)) stats.days.push(d);
-  store.set("stats",stats); renderStats();
+  const day = user.days[today()] || (user.days[today()] = {swipes:0, correct:0});
+  day.swipes++; user.totals.swipes++;
+  if(correct){ day.correct++; user.totals.correct++; }
+  user.bestStreak = Math.max(user.bestStreak, streak());
+  saveUser(); renderStats();
   setTimeout(()=>{busy=false;next()}, 380);
 }
 function streak(){
-  const set=new Set(stats.days); let n=0, dt=new Date();
-  if(!set.has(today())) dt.setDate(dt.getDate()-1);
-  while(set.has(dt.toISOString().slice(0,10))){n++;dt.setDate(dt.getDate()-1)}
+  const has = d => d in user.days;
+  let n=0, dt=new Date();
+  if(!has(today())) dt.setDate(dt.getDate()-1);
+  while(has(localDate(dt))){n++;dt.setDate(dt.getDate()-1)}
   return n;
 }
 function renderStats(){
   $("s-streak").textContent=streak();
-  $("s-today").textContent=stats.today.date===today()?stats.today.n:0;
-  $("s-acc").textContent=stats.total?Math.round(100*stats.right/stats.total)+"%":"–";
+  $("s-today").textContent=(user.days[today()]||{swipes:0}).swipes;
+  $("s-total").textContent=user.totals.swipes;
+  $("s-acc").textContent=user.totals.swipes?Math.round(100*user.totals.correct/user.totals.swipes)+"%":"–";
 }
 
 // Dragging
@@ -271,19 +306,19 @@ function renderMine(){
     const li=document.createElement("li");
     li.innerHTML=`<span class="tag ${m.kind==="keep"?"k":"d"}">${m.kind==="keep"?"keep":"let go"}</span><p></p><button class="x" aria-label="Remove">✕</button>`;
     li.querySelector("p").textContent=m.text;
-    li.querySelector("button").onclick=()=>{mine.splice(i,1);store.set("mine",mine);renderMine();renderPacks();if(pack==="Mine"&&!mine.length){pack="Uncertainty";newDeck()}};
+    li.querySelector("button").onclick=()=>{mine.splice(i,1);saveUser();renderMine();renderPacks();if(pack==="Mine"&&!mine.length){pack="Uncertainty";newDeck()}};
     ul.appendChild(li);
   });
 }
 $("btn-add").onclick=()=>{
   const t=$("new-text").value.trim(); if(!t) return;
-  mine.push({text:t,kind:$("new-kind").value}); store.set("mine",mine);
+  mine.push({text:t,kind:$("new-kind").value}); saveUser();
   $("new-text").value=""; renderMine(); renderPacks();
 };
 let resetArmed=false;
 $("btn-reset").onclick=()=>{
   if(!resetArmed){resetArmed=true;$("btn-reset").textContent="Tap again to confirm";return}
-  stats={right:0,total:0,days:[],today:{date:"",n:0}};store.set("stats",stats);renderStats();
+  user.totals={swipes:0,correct:0};user.days={};user.bestStreak=0;saveUser();renderStats();
   resetArmed=false;$("btn-reset").textContent="Reset my stats";$("reset-msg").textContent="Stats reset.";
 };
 
